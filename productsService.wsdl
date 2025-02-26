@@ -15,13 +15,7 @@
           </xsd:sequence>
         </xsd:complexType>
       </xsd:element>
-  </types>
-  	
- <types>
-    <xsd:schema targetNamespace="http://localhost:8000/products">
-      <xsd:element name="CreateProductRequest">
-      	...
-      </xsd:element>
+   
       <xsd:element name="CreateProductResponse">
         <xsd:complexType>
           <xsd:sequence>
