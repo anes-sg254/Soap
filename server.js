@@ -5,11 +5,11 @@ const { Pool } = require("pg");
 
 // Configuration de la connexion PostgreSQL
 const pool = new Pool({
-  user: "postgres",         
-  host: "localhost",         
-  database: "Marketplace", 
-  password: "msprepsi",      
-  port: 5432,                
+  user: "postgres",
+  host: "localhost",
+  database: "Marketplace",
+  password: "msprepsi",
+  port: 5432,
 });
 
 // Définition du service SOAP
@@ -56,12 +56,11 @@ const service = {
             id: product.id,
             name: product.name,
             about: product.about,
-            price: product.price, 
+            price: product.price,
           }));
 
           // Retourner les produits au client SOAP
           callback(products);
-
         } catch (error) {
           console.error("Erreur lors de la récupération des produits :", error);
           throw {
@@ -71,6 +70,78 @@ const service = {
               statusCode: 501,
             },
           };
+        }
+      },
+      PatchProduct: async function ({ id, name, price, about }, callback) {
+        if (!id) {
+          throw {
+            Fault: {
+              Code: { Value: "soap:Sender" },
+              Reason: { Text: "Missing ID" },
+              statusCode: 400,
+            },
+          };
+        }
+
+        try {
+          let query = "UPDATE products SET";
+          let values = [];
+          let index = 1;
+
+          if (name) {
+            query += ` name = $${index},`;
+            values.push(name);
+            index++;
+          }
+          if (price) {
+            query += ` price = $${index},`;
+            values.push(price);
+            index++;
+          }
+          if (about) {
+            query += ` about = $${index},`;
+            values.push(about);
+            index++;
+          }
+
+          query = query.slice(0, -1);
+          query += ` WHERE id = $${index} RETURNING *`;
+          values.push(id);
+
+          const result = await pool.query(query, values);
+
+          if (result.rows.length === 0) {
+            callback({ error: "Produit non trouvé" });
+          } else {
+            callback(result.rows[0]);
+          }
+        } catch (error) {
+          console.error("Erreur lors de la mise à jour du produit :", error);
+          callback({ error: "Erreur lors de la mise à jour du produit" });
+        }
+      },
+      DeleteProduct: async function ({ id }, callback) {
+        if (!id) {
+          throw {
+            Fault: {
+              Code: { Value: "soap:Sender" },
+              Reason: { Text: "Missing ID" },
+              statusCode: 400,
+            },
+          };
+        }
+
+        try {
+          const result = await pool.query("DELETE FROM products WHERE id = $1 RETURNING *", [id]);
+
+          if (result.rows.length === 0) {
+            callback({ error: "Produit non trouvé" });
+          } else {
+            callback({ message: "Produit supprimé avec succès" });
+          }
+        } catch (error) {
+          console.error("Erreur lors de la suppression du produit :", error);
+          callback({ error: "Erreur lors de la suppression du produit" });
         }
       },
     },
