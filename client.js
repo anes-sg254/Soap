@@ -18,4 +18,19 @@ soap.createClient("http://localhost:8000/products?wsdl", {}, function (err, clie
     }
     console.log("Result:", result);
   });
+  client.GetProducts({}, function (err, result) {
+    if (err) {
+      console.error(
+        "Error making SOAP request for GetProducts:",
+        err.response.status,
+        err.response.statusText,
+        err.body
+      );
+      return;
+    }
+
+    // Affiche la liste des produits récupérés
+    console.log("All products:", result);
+  });
+
 });
