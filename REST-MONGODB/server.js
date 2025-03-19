@@ -28,7 +28,7 @@ const CategorySchema = z.object({
   
   const CreateCategorySchema = CategorySchema.omit({ _id: true });
 
-// Connexion MongoDB + lancement serveur
+
 client.connect().then(() => {
   db = client.db("myDB");
   app.listen(port, () => {
@@ -38,7 +38,7 @@ client.connect().then(() => {
   console.error("Erreur MongoDB:", err);
 });
 
-// POST /products – Crée un produit
+
 app.post("/products", async (req, res) => {
     const result = await CreateProductSchema.safeParse(req.body);
   
@@ -75,65 +75,41 @@ app.post("/products", async (req, res) => {
     }
   });
   
-
-// GET /products – Liste tous les produits avec _id en string
-app.get("/products", async (req, res) => {
+  app.patch("/products/:id", async (req, res) => {
+    const { id } = req.params;
+  
+    const PatchSchema = CreateProductSchema.partial(); 
+    const result = await PatchSchema.safeParse(req.body);
+  
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+  
     try {
-      const result = await db
-        .collection("products")
-        .aggregate([
-          { $match: {} }, 
-          {
-            $lookup: {
-              from: "categories",
-              localField: "categoryIds",
-              foreignField: "_id",
-              as: "categories",
-            },
-          },
-        ])
-        .toArray();
+      const _id = new ObjectId(id);
+      const dataToUpdate = result.data;
   
-      const safeResult = result.map(product => ({
-        ...product,
-        _id: product._id.toString(),
-        categoryIds: product.categoryIds ? product.categoryIds.map(id => id.toString()) : [],
-        categories: product.categories.map(cat => ({
-          ...cat,
-          _id: cat._id.toString(),
-        })),
-      }));
+      if (dataToUpdate.categoryIds) {
+        dataToUpdate.categoryIds = dataToUpdate.categoryIds.map(cid => new ObjectId(cid));
+      }
   
-      res.json(safeResult);
+      const ack = await db.collection("products").updateOne(
+        { _id },
+        { $set: dataToUpdate }
+      );
+  
+      if (ack.matchedCount === 0) {
+        return res.status(404).json({ error: "Produit non trouvé" });
+      }
+  
+      res.json({ message: "Produit mis à jour", updatedFields: dataToUpdate });
   
     } catch (err) {
-      console.error("Erreur GET /products:", err);
-      res.status(500).json({ error: "Erreur serveur" });
+      console.error("Erreur PATCH /products/:id:", err);
+      res.status(400).json({ error: "ID invalide" });
     }
   });
-
-  app.post("/products", async (req, res) => {
-    const result = await CreateProductSchema.safeParse(req.body);
   
-    if (result.success) {
-      const { name, about, price, categoryIds = [] } = result.data;
-  
-      try {
-        const ack = await db.collection("products").insertOne({ name, about, price, categoryIds });
-  
-        res.send({
-          _id: ack.insertedId.toString(),
-          name, about, price, categoryIds
-        });
-      } catch (err) {
-        console.error("Erreur POST /products:", err);
-        res.status(500).json({ error: "Erreur serveur" });
-      }
-    } else {
-      res.status(400).send(result);
-    }
-  });
-
   app.get("/products", async (req, res) => {
     try {
       const result = await db.collection("products").aggregate([
@@ -147,7 +123,7 @@ app.get("/products", async (req, res) => {
         },
       ]).toArray();
   
-      // Convertir _id en string
+      
       const safeResult = result.map(p => ({
         ...p,
         _id: p._id.toString(),
@@ -161,6 +137,26 @@ app.get("/products", async (req, res) => {
       res.status(500).json({ error: "Erreur serveur" });
     }
   });
+
+  app.delete("/products/:id", async (req, res) => {
+    const { id } = req.params;
+  
+    try {
+      const _id = new ObjectId(id);
+  
+      const ack = await db.collection("products").deleteOne({ _id });
+  
+      if (ack.deletedCount === 0) {
+        return res.status(404).json({ error: "Produit non trouvé" });
+      }
+  
+      res.status(204).send();
+    } catch (err) {
+      console.error("Erreur DELETE /products/:id:", err);
+      res.status(400).json({ error: "ID invalide" });
+    }
+  });
+  
 
   	
 app.post("/categories", async (req, res) => {
@@ -177,19 +173,3 @@ app.post("/categories", async (req, res) => {
       res.status(400).send(result);
     }
   });	
-app.post("/categories", async (req, res) => {
-  const result = await CreateCategorySchema.safeParse(req.body);
- 
-  // If Zod parsed successfully the request body
-  if (result.success) {
-    const { name } = result.data;
- 
-    const ack = await db.collection("categories").insertOne({ name });
- 
-    res.send({ _id: ack.insertedId, name });
-  } else {
-    res.status(400).send(result);
-  }
-});
-  
-  

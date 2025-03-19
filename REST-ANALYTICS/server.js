@@ -9,16 +9,15 @@ let db;
 
 app.use(express.json());
 
-// 🔹 Schemas dynamiques pour analytics
+
 const AnalyticsSchema = z.object({
   source: z.string(),
   url: z.string(),
   visitor: z.string(),
   createdAt: z.coerce.date(),
-  meta: z.record(z.any()), // meta flexible
+  meta: z.record(z.any()), 
 });
 
-// 🔸 Connexion MongoDB
 client.connect().then(() => {
   db = client.db("analyticsDB");
   app.listen(port, () => {
@@ -27,9 +26,7 @@ client.connect().then(() => {
 }).catch(err => console.error("MongoDB Error:", err));
 
 
-// ========== ROUTES ANALYTICS ==========
 
-// 🔸 POST /views
 app.post("/views", async (req, res) => {
   const result = AnalyticsSchema.safeParse(req.body);
 
@@ -45,7 +42,6 @@ app.post("/views", async (req, res) => {
   }
 });
 
-// 🔸 POST /actions
 app.post("/actions", async (req, res) => {
   const result = AnalyticsSchema.extend({ action: z.string() }).safeParse(req.body);
 
@@ -61,7 +57,7 @@ app.post("/actions", async (req, res) => {
   }
 });
 
-// 🔸 POST /goals
+
 app.post("/goals", async (req, res) => {
   const result = AnalyticsSchema.extend({ goal: z.string() }).safeParse(req.body);
 
@@ -82,27 +78,44 @@ app.get("/goals/:goalId/details", async (req, res) => {
     const { goalId } = req.params;
   
     try {
-      const goal = await db.collection("goals").findOne({ _id: new ObjectId(goalId) });
+      const _id = new ObjectId(goalId);
   
-      if (!goal) {
+      const result = await db.collection("goals").aggregate([
+        { $match: { _id } }, 
+        {
+          $lookup: { 
+            from: "views",
+            localField: "visitor",
+            foreignField: "visitor",
+            as: "views",
+          },
+        },
+        {
+          $lookup: { 
+            from: "actions",
+            localField: "visitor",
+            foreignField: "visitor",
+            as: "actions",
+          },
+        },
+      ]).toArray();
+  
+      if (result.length === 0) {
         return res.status(404).json({ error: "Goal non trouvé" });
       }
   
-      // Trouver tous les views et actions pour le même visitor
-      const [views, actions] = await Promise.all([
-        db.collection("views").find({ visitor: goal.visitor }).toArray(),
-        db.collection("actions").find({ visitor: goal.visitor }).toArray()
-      ]);
+      const data = result[0];
   
       res.json({
-        goal: { ...goal, _id: goal._id.toString() },
-        views: views.map(v => ({ ...v, _id: v._id.toString() })),
-        actions: actions.map(a => ({ ...a, _id: a._id.toString() }))
+        goal: { ...data, _id: data._id.toString(), views: undefined, actions: undefined },
+        views: data.views.map(v => ({ ...v, _id: v._id.toString() })),
+        actions: data.actions.map(a => ({ ...a, _id: a._id.toString() })),
       });
   
     } catch (err) {
-      console.error("Erreur GET /goals/:goalId/details", err);
+      console.error("Erreur GET /goals/:goalId/details (aggregation):", err);
       res.status(500).json({ error: "Erreur serveur" });
     }
   });
+  
 
