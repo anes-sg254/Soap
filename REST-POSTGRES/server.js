@@ -149,6 +149,96 @@ app.get("/f2p-games/:id", async (req, res) => {
   }
 });
 
+app.post("/orders", async (req, res) => {
+    const { userId, productIds } = req.body;
+  
+    if (!userId || !Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ error: "userId et productIds requis" });
+    }
+  
+    try {
+      // Récupère les produits pour calculer le total
+      const products = await sql`
+        SELECT * FROM products WHERE id = ANY(${productIds})
+      `;
+  
+      if (products.length !== productIds.length) {
+        return res.status(400).json({ error: "Certains produits sont invalides" });
+      }
+  
+      const totalHT = products.reduce((sum, p) => sum + p.price, 0);
+      const totalTTC = +(totalHT * 1.2).toFixed(2); // TVA 20%
+  
+      const order = await sql`
+        INSERT INTO orders (userId, productIds, total)
+        VALUES (${userId}, ${productIds}, ${totalTTC})
+        RETURNING *
+      `;
+  
+      res.status(201).json(order[0]);
+    } catch (error) {
+      console.error("Erreur POST /orders:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
+  app.get("/orders/:id", async (req, res) => {
+    try {
+      const orders = await sql`SELECT * FROM orders WHERE id = ${req.params.id}`;
+      if (orders.length === 0) {
+        return res.status(404).json({ error: "Commande non trouvée" });
+      }
+  
+      const order = orders[0];
+  
+      const user = await sql`
+        SELECT id, username, email FROM users WHERE id = ${order.userid}
+      `;
+      const products = await sql`
+        SELECT * FROM products WHERE id = ANY(${order.productids})
+      `;
+  
+      res.json({
+        ...order,
+        user: user[0],
+        products: products,
+      });
+    } catch (error) {
+      console.error("Erreur GET /orders/:id:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
+  app.get("/orders", async (req, res) => {
+    try {
+      const orders = await sql`SELECT * FROM orders`;
+      res.json(orders);
+    } catch (error) {
+      console.error("Erreur GET /orders:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+
+  
+  app.delete("/orders/:id", async (req, res) => {
+    try {
+      const result = await sql`
+        DELETE FROM orders WHERE id = ${req.params.id} RETURNING *
+      `;
+      if (result.length === 0) {
+        return res.status(404).json({ error: "Commande non trouvée" });
+      }
+      res.json({ message: "Commande supprimée", order: result[0] });
+    } catch (error) {
+      console.error("Erreur DELETE /orders:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+  
+  
+
+
+
 // ---------------- DEMARRAGE ---------------- //
 app.listen(port, () => {
   console.log(`Listening on http://localhost:${port}`);
