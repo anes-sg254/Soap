@@ -5,34 +5,47 @@ const z = require("zod");
 const app = express();
 const port = 8000;
 
+
 // Connexion PostgreSQL
 const sql = postgres({ db: "Marketplace", user: "postgres", password: "msprepsi" });
 
-// Middleware JSON parser
+// Middleware JSON
 app.use(express.json());
 
-// Schéma Zod pour valider les produits
+// Schéma Zod
 const ProductSchema = z.object({
-  id: z.string().optional(), // généré par BDD
+  id: z.string().optional(),
   name: z.string(),
   about: z.string(),
   price: z.number().positive(),
 });
 
-	
 const CreateProductSchema = ProductSchema.omit({ id: true });
 
+// ---------------- ROUTES PRODUITS ---------------- //
+
+// GET /
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
-
-app.get("/products/:id", async (req, res) => {
-  const { id } = req.params;
+// GET /products - tous les produits
+app.get("/products", async (req, res) => {
   try {
-    const result = await sql`SELECT * FROM products WHERE id = ${id}`;
+    const products = await sql`SELECT * FROM products`;
+    res.json(products);
+  } catch (error) {
+    console.error("Erreur GET /products:", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+// GET /products/:id - un produit
+app.get("/products/:id", async (req, res) => {
+  try {
+    const result = await sql`SELECT * FROM products WHERE id = ${req.params.id}`;
     if (result.length === 0) {
-      return res.status(404).json({ error: "Produit non trouvé" });
+      return res.status(404).json({ message: "Produit non trouvé" });
     }
     res.json(result[0]);
   } catch (error) {
@@ -41,65 +54,75 @@ app.get("/products/:id", async (req, res) => {
   }
 });
 
-	
-app.get("/products", async (req, res) => {
-    const products = await sql`
-      SELECT * FROM products
-      `;
-   
-    res.send(products);
-  });
-   
-  app.get("/products/:id", async (req, res) => {
-    const product = await sql`
-      SELECT * FROM products WHERE id=${req.params.id}
-      `;
-   
-    if (product.length > 0) {
-      res.send(product[0]);
-    } else {
-      res.status(404).send({ message: "Not found" });
-    }
-  });
-
-	
+// POST /products - ajouter un produit
 app.post("/products", async (req, res) => {
-    const result = await CreateProductSchema.safeParse(req.body);
-   
-    // If Zod parsed successfully the request body
-    if (result.success) {
-      const { name, about, price } = result.data;
-   
-      const product = await sql`
+  const result = CreateProductSchema.safeParse(req.body);
+
+  if (!result.success) {
+    return res.status(400).json({ error: result.error.errors });
+  }
+
+  const { name, about, price } = result.data;
+
+  try {
+    const product = await sql`
       INSERT INTO products (name, about, price)
       VALUES (${name}, ${about}, ${price})
       RETURNING *
-      `;
-   
-      res.send(product[0]);
-    } else {
-      res.status(400).send(result);
-    }
-  });
-  
+    `;
+    res.status(201).json(product[0]);
+  } catch (error) {
+    console.error("Erreur POST /products:", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
 
-	
-  app.delete("/products/:id", async (req, res) => {
+// DELETE /products/:id - supprimer un produit
+app.delete("/products/:id", async (req, res) => {
+  try {
     const product = await sql`
-      DELETE FROM products
-      WHERE id=${req.params.id}
-      RETURNING *
-      `;
-   
-    if (product.length > 0) {
-      res.send(product[0]);
-    } else {
-      res.status(404).send({ message: "Not found" });
+      DELETE FROM products WHERE id=${req.params.id} RETURNING *
+    `;
+    if (product.length === 0) {
+      return res.status(404).json({ message: "Produit non trouvé" });
     }
-  });
+    res.json(product[0]);
+  } catch (error) {
+    console.error("Erreur DELETE /products/:id:", error);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
 
+// ---------------- ROUTES F2P GAMES ---------------- //
 
+// GET /f2p-games - tous les jeux F2P
+app.get("/f2p-games", async (req, res) => {
+  try {
+    const response = await fetch("https://www.freetogame.com/api/games");
+    const games = await response.json();
+    res.json(games);
+  } catch (error) {
+    console.error("Erreur GET /f2p-games:", error);
+    res.status(500).json({ error: "Erreur de récupération des jeux F2P" });
+  }
+});
 
+// GET /f2p-games/:id - détail d’un jeu
+app.get("/f2p-games/:id", async (req, res) => {
+  try {
+    const response = await fetch(`https://www.freetogame.com/api/game?id=${req.params.id}`);
+    if (!response.ok) {
+      return res.status(404).json({ error: "Jeu non trouvé" });
+    }
+    const game = await response.json();
+    res.json(game);
+  } catch (error) {
+    console.error("Erreur GET /f2p-games/:id:", error);
+    res.status(500).json({ error: "Erreur de récupération du jeu F2P" });
+  }
+});
+
+// ---------------- DEMARRAGE ---------------- //
 app.listen(port, () => {
   console.log(`Listening on http://localhost:${port}`);
 });
