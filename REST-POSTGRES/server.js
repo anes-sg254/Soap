@@ -29,16 +29,43 @@ app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
-// GET /products - tous les produits
 app.get("/products", async (req, res) => {
-  try {
-    const products = await sql`SELECT * FROM products`;
-    res.json(products);
-  } catch (error) {
-    console.error("Erreur GET /products:", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
+    const { name, about, price } = req.query;
+  
+    let conditions = [];
+    let values = [];
+  
+    if (name) {
+      conditions.push(`LOWER(name) LIKE LOWER('%' || $${values.length + 1} || '%')`);
+      values.push(name);
+    }
+  
+    if (about) {
+      conditions.push(`LOWER(about) LIKE LOWER('%' || $${values.length + 1} || '%')`);
+      values.push(about);
+    }
+  
+    if (price) {
+      const priceNumber = parseFloat(price);
+      if (!isNaN(priceNumber)) {
+        conditions.push(`price <= $${values.length + 1}`);
+        values.push(priceNumber);
+      }
+    }
+  
+    // Construction finale de la requête SQL
+    const whereClause = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
+    const query = `SELECT * FROM products ${whereClause}`;
+  
+    try {
+      const products = await sql.unsafe(query, values);
+      res.json(products);
+    } catch (error) {
+      console.error("Erreur recherche /products:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+  
 
 // GET /products/:id - un produit
 app.get("/products/:id", async (req, res) => {
