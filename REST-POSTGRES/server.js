@@ -67,19 +67,27 @@ app.get("/products", async (req, res) => {
   });
   
 
-// GET /products/:id - un produit
-app.get("/products/:id", async (req, res) => {
-  try {
-    const result = await sql`SELECT * FROM products WHERE id = ${req.params.id}`;
-    if (result.length === 0) {
-      return res.status(404).json({ message: "Produit non trouvé" });
+  app.get("/products/:id", async (req, res) => {
+    try {
+      const productRes = await sql`SELECT * FROM products WHERE id = ${req.params.id}`;
+      if (productRes.length === 0) {
+        return res.status(404).json({ error: "Produit non trouvé" });
+      }
+  
+      const product = productRes[0];
+  
+      // Récupérer les reviews associées
+      const reviews = await sql`
+        SELECT * FROM reviews WHERE productId = ${product.id}
+      `;
+  
+      res.json({ ...product, reviews });
+    } catch (error) {
+      console.error("Erreur GET /products/:id:", error);
+      res.status(500).json({ error: "Erreur serveur" });
     }
-    res.json(result[0]);
-  } catch (error) {
-    console.error("Erreur GET /products/:id:", error);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
+  });
+  
 
 // POST /products - ajouter un produit
 app.post("/products", async (req, res) => {
@@ -234,6 +242,49 @@ app.post("/orders", async (req, res) => {
       res.status(500).json({ error: "Erreur serveur" });
     }
   });
+
+  app.post("/reviews", async (req, res) => {
+    const { userId, productId, score, content } = req.body;
+  
+    if (!userId || !productId || !score || !content) {
+      return res.status(400).json({ error: "Champs requis manquants" });
+    }
+  
+    if (score < 1 || score > 5) {
+      return res.status(400).json({ error: "Score doit être entre 1 et 5" });
+    }
+  
+    try {
+      // Créer la review
+      const review = await sql`
+        INSERT INTO reviews (userId, productId, score, content)
+        VALUES (${userId}, ${productId}, ${score}, ${content})
+        RETURNING *
+      `;
+  
+      // Ajouter l'ID de la review au produit
+      await sql`
+        UPDATE products
+        SET reviewIds = array_append(reviewIds, ${review[0].id})
+        WHERE id = ${productId}
+      `;
+  
+      // Recalculer le score moyen
+      const avgScore = await sql`
+        SELECT AVG(score) AS average FROM reviews WHERE productId = ${productId}
+      `;
+  
+      await sql`
+        UPDATE products SET score = ${avgScore[0].average} WHERE id = ${productId}
+      `;
+  
+      res.status(201).json(review[0]);
+    } catch (error) {
+      console.error("Erreur POST /reviews:", error);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
+  
   
   
 
