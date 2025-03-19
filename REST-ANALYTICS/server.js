@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient } = require("mongodb");
+const { MongoClient,ObjectId } = require("mongodb");
 const z = require("zod");
 
 const app = express();
@@ -76,4 +76,33 @@ app.post("/goals", async (req, res) => {
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
+
+
+app.get("/goals/:goalId/details", async (req, res) => {
+    const { goalId } = req.params;
+  
+    try {
+      const goal = await db.collection("goals").findOne({ _id: new ObjectId(goalId) });
+  
+      if (!goal) {
+        return res.status(404).json({ error: "Goal non trouvé" });
+      }
+  
+      // Trouver tous les views et actions pour le même visitor
+      const [views, actions] = await Promise.all([
+        db.collection("views").find({ visitor: goal.visitor }).toArray(),
+        db.collection("actions").find({ visitor: goal.visitor }).toArray()
+      ]);
+  
+      res.json({
+        goal: { ...goal, _id: goal._id.toString() },
+        views: views.map(v => ({ ...v, _id: v._id.toString() })),
+        actions: actions.map(a => ({ ...a, _id: a._id.toString() }))
+      });
+  
+    } catch (err) {
+      console.error("Erreur GET /goals/:goalId/details", err);
+      res.status(500).json({ error: "Erreur serveur" });
+    }
+  });
 
