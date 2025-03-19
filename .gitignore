@@ -1,0 +1,14 @@
+# Ne pas versionner node_modules
+node_modules/
+
+# Ignorer fichiers de logs
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Ignorer .env si tu en as un jour
+.env
+
+# Ignorer fichiers système (Windows / macOS)
+.DS_Store
+Thumbs.db
